@@ -1,0 +1,36 @@
+# Credentials — never commit these
+.env
+*.env
+*.env.local
+*.env.production
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs / temp
+*.log
+*.tmp
+/tmp/
+
+# Synthetic data scripts and cluster-specific UI — not for public repo
+/data/
+/web/
+/slides/

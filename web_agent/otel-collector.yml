@@ -1,0 +1,125 @@
+# OTel Collector — ships real Docker container metrics + logs to Elastic
+# Runs alongside the Gemini agent container in docker-compose.yml
+#
+# What this collects:
+#   docker_stats:    container CPU %, memory RSS/limit, network bytes in/out, block I/O
+#   filelog:         container stdout/stderr (captured by Docker)
+#   prometheus:      Python app /metrics endpoint (if enabled)
+#
+# Where it sends:
+#   OTLP/HTTP → Elastic ingest endpoint → Kibana Infrastructure + Logs
+
+receivers:
+
+  # ── Real Docker container metrics ──────────────────────────────────────────
+  # Connects to the Docker daemon via socket and collects per-container stats.
+  # Shows up in Kibana Observability → Infrastructure as container entities.
+  docker_stats:
+    endpoint: unix:///var/run/docker.sock
+    collection_interval: 30s
+    timeout: 20s
+    api_version: "1.43"
+    # Include resource attributes so Kibana can identify the container
+    provide_per_core_cpu_metrics: false
+
+  # ── Container stdout / stderr logs ─────────────────────────────────────────
+  # Docker writes container logs to JSON files under /var/lib/docker/containers/.
+  # Mapped read-only into the collector container.
+  filelog:
+    include:
+      - /var/lib/docker/containers/*/*.log
+    include_file_name: false
+    include_file_path: true
+    operators:
+      # Parse Docker JSON log format: {"log":"...","stream":"stdout","time":"..."}
+      - type: json_parser
+        timestamp:
+          parse_from: attributes.time
+          layout: '%Y-%m-%dT%H:%M:%S.%LZ'
+      - type: move
+        from: attributes.log
+        to: body
+      - type: move
+        from: attributes.stream
+        to: attributes["log.iostream"]
+      # Extract container ID from the file path
+      - type: regex_parser
+        regex: '/var/lib/docker/containers/(?P<container_id>[a-f0-9]+)/'
+        parse_from: attributes["log.file.path"]
+      - type: move
+        from: attributes.container_id
+        to: resource["container.id"]
+
+  # ── Process-level metrics from inside the agent container ─────────────────
+  # The OTLP receiver accepts spans/metrics/logs pushed by the Python app itself.
+  otlp:
+    protocols:
+      http:
+        endpoint: "0.0.0.0:4318"
+
+processors:
+
+  # Batch for efficiency
+  batch:
+    timeout: 5s
+    send_batch_size: 256
+
+  # Enrich container metrics with Elastic-compatible resource attributes
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: demo
+        action: upsert
+      - key: telemetry.distro.name
+        value: elastic
+        action: upsert
+
+  # Add container name from Docker stats to resource
+  resourcedetection:
+    detectors: [docker, env]
+    timeout: 10s
+    docker:
+      resource_attributes:
+        host.name:
+          enabled: true
+        os.type:
+          enabled: true
+
+exporters:
+
+  # ── Elastic via OTLP ───────────────────────────────────────────────────────
+  # Sends to the ingest endpoint. Metrics → metrics-generic.otel-*
+  # Logs    → logs-generic.otel-*  (visible in Kibana Discover + Logs)
+  otlphttp:
+    endpoint: "${OTEL_EXPORTER_OTLP_ENDPOINT}"
+    headers:
+      Authorization: "ApiKey ${ES_API_KEY}"
+    compression: gzip
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+    sending_queue:
+      enabled: true
+      num_consumers: 4
+      queue_size: 100
+
+  # Debug: log what's being exported (disable for demos)
+  # logging:
+  #   verbosity: detailed
+
+service:
+  pipelines:
+    metrics:
+      receivers: [docker_stats, otlp]
+      processors: [batch, resource, resourcedetection]
+      exporters: [otlphttp]
+    logs:
+      receivers: [filelog, otlp]
+      processors: [batch, resource]
+      exporters: [otlphttp]
+    traces:
+      receivers: [otlp]
+      processors: [batch, resource]
+      exporters: [otlphttp]
