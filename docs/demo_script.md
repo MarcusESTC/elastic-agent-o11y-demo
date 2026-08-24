@@ -1,141 +1,165 @@
-# AI / LLM Observability Demo
-### Story, Talk Track & Presenter's Script
+# AI Agent Observability — Demo Script
+### Talk Track & Presenter Guide
 
-> **Cluster:** your Elastic Cloud deployment  
-> **Audience:** Engineering leaders, AI/Platform teams evaluating observability for their LLM systems  
-> **Time:** ~20 minutes (adjust by skipping slides)
+> **Audience:** Engineering leaders, AI/Platform teams evaluating LLM observability  
+> **Time:** ~20 minutes · adjust by skipping acts  
+> **Stack:** Gemini 2.5 Flash · OpenTelemetry OTLP · Elastic Cloud 9.6 Serverless
 
 ---
 
 ## 🧩 The Story
 
-> *"Your team just shipped an AI-powered product. LLM calls are scattered across 4 agent services, 2 model providers, and 6 tools. Costs are climbing. Latency is unpredictable. The on-call engineer has no idea which model is misbehaving at 3 AM. How do you get visibility?"*
+> *"Your team just shipped an AI agent in production. It calls a language model, searches your knowledge base, and runs calculations. Costs are climbing. Latency is unpredictable. One of your models silently started hallucinating. The on-call engineer opens Kibana and has no idea where to look. How do you get visibility into what an AI agent is actually doing?"*
 
-This demo answers that question using **Elastic APM** extended with **OpenTelemetry semantic conventions for LLMs** (`gen_ai.*`). We'll walk through 4 AI agent services — each running in production — and show everything you'd expect from a Datadog LLM Obs product, *built natively in Elasticsearch*.
-
----
-
-## 📋 Pre-Demo Checklist
-
-Before the call, confirm:
-- [ ] Kibana is open to the APM section (`/app/apm`)
-- [ ] Time range set to **Last 48 hours**
-- [ ] Dashboard `LLM Observability — ai-research-agent` is bookmarked
-- [ ] Browser tabs pre-opened: APM Services, the LLM dashboard, Discover
-- [ ] Run `data/generate_ai_agent.py` if data is older than 2 days
+This demo answers that with a **live** Gemini AI agent — fully instrumented with OpenTelemetry — shipping real traces, logs, and metrics to Elastic via OTLP as you use it.
 
 ---
 
-## 🎬 Act 1 — The Problem (2 min)
+## ✅ Pre-Demo Checklist (5 min before call)
 
-**Slide / screen:** APM Services list
-
-> *"Here's what an AI backend looks like in APM. Four agent services — `ai-research-agent`, `code-review-agent`, `customer-support-agent`, and `data-analyst-agent`. They use LangGraph, CrewAI, AutoGen, and LangChain respectively. Each calls OpenAI and Anthropic models, searches Elasticsearch, executes code, fetches URLs."*
-
-> *"In a traditional APM product, you'd see latency and error rates — which is great. But for AI workloads you need more: token counts, model costs, per-model latency, conversation tracing. Let's look at that."*
-
-**Key message:** Standard APM is necessary but not sufficient for AI. You need token economics.
-
----
-
-## 🎬 Act 2 — Service Overview (3 min)
-
-**Click:** `ai-research-agent` service → **Overview tab**
-
-> *"The Overview tab shows us the classic APM view — throughput, latency P95, error rate. This agent is processing research tasks, hitting gpt-4o and Claude Sonnet. P95 is around 12 seconds — expected for a multi-step reasoning chain."*
-
-**Click:** **Transactions tab**
-
-> *"Every agent task shows up as a transaction. The transaction name is the scenario — 'technical research', 'market analysis'. I can click any one and see the full distributed trace waterfall: planning → embedding → retrieval → tool calls → inference → synthesis."*
-
-**Click any transaction → Trace waterfall**
-
-> *"This is the span waterfall. Every hop is here: the planning LLM call, the embedding call, the Elasticsearch retrieval, tool execution, the final chat inference. OTel gen_ai.* attributes — model, token counts, input/output messages — are attached to each span. Click the Labels tab on any LLM span and you'll see the prompt and response stored in the trace.*"
-
-**Click an LLM span → Labels tab**
-
-> *"Input and output messages, model name, provider, token counts — all in the span. This is how you answer 'what did the model actually say?' without a separate log ship."*
+- [ ] Agent running: `python3 web_agent/server.py` → http://localhost:5601
+- [ ] Send 5–10 chat messages to warm up the data (tool calls need to appear)
+- [ ] Kibana open at: `APM → Services → gemini-demo-agent`
+- [ ] Tabs pre-opened: APM Overview · Service Map · Dashboard · SLOs · Alerts
+- [ ] Time range: **Last 1 hour** (live data)
+- [ ] Presentation open: `open presentation/index.html`
 
 ---
 
-## 🎬 Act 3 — Token Economics & Cost (4 min)
+## 🎬 Act 1 — Show the Live Agent (2 min)
 
-**Navigate to:** Dashboard `LLM Observability — ai-research-agent`
+**Screen:** http://localhost:5601
 
-> *"Now the story gets interesting. This dashboard is built 100% from ES|QL queries on the same APM trace data — no separate ingestion, no second tool. Let me walk through the KPI tiles."*
+> *"This is a live Gemini AI chat agent. Every message I send generates real OpenTelemetry telemetry — traces, logs, and metrics — shipping to Elastic right now via OTLP. Watch the sidebar."*
 
-**Point to top row:**
+**Send:** `"What is the ESTC stock price and calculate 2 to the power of 20"`
 
-> *"Total requests, input tokens, output tokens, estimated cost in USD, error rate, P95 latency. The cost tile uses a CASE expression in ES|QL — gpt-4o at \$2.50 per million input tokens, gpt-4o-mini at \$0.15, Claude Sonnet at \$3.00, Claude Haiku at \$0.80. One query, one number."*
+Point to the UI as it responds:
+- **Tool chips** appear before the response: `🔧 get_stock_price (54ms)` · `🔧 calculate (12ms)`
+- **Trace ID** appears in the pills row below the response
+- **Sidebar** updates: latency, tokens in/out, cost, tool calls count, A/B variant badge
 
-**Point to token usage chart:**
+> *"The agent called two tools — a stock price lookup and a math calculator — before calling the LLM. Each of those tool calls is a child span in the APM trace. You can see the A/B variant: this session is routed to model A (gemini-2.5-flash) — 30% of sessions go to the lighter 2.5-flash-lite for cost comparison."*
 
-> *"Token burn over time — stacked input vs output. You can see the evening research spike and the quieter overnight window. This is your first tool for budget forecasting."*
+**Click 👍** on the response.
 
-**Point to donuts:**
-
-> *"Requests by model — Claude Haiku and gpt-4o-mini are doing most of the work, which is the right design. Requests by provider — we're dual-provider, which gives us resilience."*
-
-**Point to cost bar:**
-
-> *"Cost breakdown by model. Claude Sonnet is the most expensive per call but drives the highest-quality research steps. gpt-4o-mini handles the cheap planning steps. This is the conversation the AI platform team needs to have with finance."*
-
-**Key message:** Elasticsearch is the system of record for your AI costs, not a third-party cost dashboard.
+> *"The thumbs up just fired a feedback event — logged as an OTel record correlated to this exact trace ID. We can query which responses users liked and compare them to latency, model, and token count."*
 
 ---
 
-## 🎬 Act 4 — Dependencies & Service Map (3 min)
+## 🎬 Act 2 — APM Trace Waterfall (4 min)
 
-**Back in APM → `ai-research-agent` → Dependencies tab**
+**Screen:** Kibana → APM → Services → `gemini-demo-agent` → Transactions
 
-> *"The Dependencies tab shows every external service this agent calls — OpenAI for chat and embeddings, Anthropic for Sonnet/Haiku, Elasticsearch for retrieval, the Code Executor sandbox, and external web APIs. Error rates and latency per dependency, live."*
+> *"Every chat turn is one APM transaction: `invoke_agent`. Click any row."*
 
-> *"If OpenAI's API degrades at 2 AM, this tab shows it first — before the model starts returning garbage, before users complain."*
+**Click a transaction → Trace waterfall**
 
-**Click:** Service Map (left nav)
+> *"Here's what makes this different from basic APM. We have three levels of spans:*
+> 1. *`invoke_agent` — the root SERVER span, the full agent turn*
+> 2. *`tool:get_stock_price` and `tool:calculate` — CLIENT spans, one per tool call*
+> 3. *`chat gemini-2.5-flash` — the CLIENT span for the actual LLM API call*"
 
-> *"The Service Map renders the full call graph: four agents fanning out to OpenAI, Anthropic, Elasticsearch, and external services. Thicker lines = more traffic. Red = errors. This is how an on-call engineer immediately understands blast radius during an incident."*
+**Click the `chat` span → Events tab**
 
----
+> *"Span events store the full prompt and the full response — no truncation. This is how you answer 'what did the model actually receive and what did it say?' without a separate log search."*
 
-## 🎬 Act 5 — Errors & Logs (3 min)
+**Click the `chat` span → Attributes tab**
 
-**Click:** `ai-research-agent` → **Errors tab**
+> *"gen_ai.* semantic convention attributes: model name, input tokens, output tokens, peer.service set to 'google_gemini' — that's what drives the service map. And `ab.variant: A` — every span is tagged with which model was used, so we can compare A vs B in ES|QL."*
 
-> *"The Errors tab groups exceptions by type. Here we see RateLimitError from OpenAI, ConnectionTimeout from web fetches, NotFoundError from Elasticsearch. Each error is linked to its trace — one click and I'm in the waterfall that produced it."*
-
-> *"This matters because a 'high error rate' alert without a trace is useless. With Elastic, the error IS the trace."*
-
-**Click:** **Logs tab**
-
-> *"Finally, structured application logs correlated to every trace. Each log line carries trace.id and transaction.id — so if a customer reports a bad response, I search by conversation ID, find the trace, jump to the logs, and see exactly what the agent was doing. From alert to root cause in under 2 minutes."*
-
-**Key message:** Errors + logs + traces in one place, correlated. No pivoting between tools.
+**Key message:** The agentic waterfall — agent → tools → LLM — is exactly what engineering teams need to debug slow responses and runaway costs.
 
 ---
 
-## 🎬 Act 6 — Scale It: All Four Agents (2 min)
+## 🎬 Act 3 — Service Map (2 min)
 
-**Go back to:** APM Services list
+**Click:** Service Map tab
 
-> *"We've been looking at one agent. You have four — and each one has its own error patterns, model mix, and cost profile. Switch to `code-review-agent`: it's running CrewAI with Claude Sonnet for the heavy review passes and gpt-4o-mini for the pre-checks. Error profile is different: CalledProcessError from the code sandbox, rather than rate limits."*
+> *"The service map is auto-discovered from the `peer.service` attribute on each CLIENT span. No configuration — Elastic builds this from the traces. You see:*
+> - *`gemini-demo-agent` → `google_gemini` (the LLM call)*
+> - *`gemini-demo-agent` → `tool.get_stock_price` (the stock API tool)*
+> - *`gemini-demo-agent` → `tool.search_knowledge_base` (the search tool)*"
 
-> *"The customer-support agent is your highest-volume service — 200 transactions per day, mostly Claude Haiku, tight latency SLA. The data-analyst agent has the highest token cost per call because it's doing multi-step pandas + LLM narration on large datasets."*
-
-> *"One Elasticsearch cluster. One APM integration. Four completely different AI architectures — all visible in the same UI, comparable side by side."*
+> *"In Elastic 9.5, this map is embedded on every alert detail page. If a latency alert fires, you open the alert and the service map is right there — dependency analysis without leaving the alert."*
 
 ---
 
-## 🎬 Act 7 — The Pitch (2 min)
+## 🎬 Act 4 — Guardrails (1 min)
 
-> *"Let's talk about what you just saw. This is all built on OpenTelemetry — specifically the gen_ai.* semantic conventions. Any language, any framework. If your team already uses OTel for their microservices, adding LLM observability is additive instrumentation. No new agents, no new ingestion pipelines."*
+**Send in chat:** `"My email is test@company.com, can you help me?"`
 
-> *"And critically: you own this data. It's in Elasticsearch. You can write arbitrary ES|QL queries against it, set alert rules on token costs, build SLOs on model error rates, join LLM traces to your business event data. That's something no SaaS LLM obs tool can give you."*
+> *"Watch the pills row — you'll see a red `⚠️ PII` badge. The agent detected an email address before calling the LLM, logged a guardrail violation event on the span, and incremented a metric counter. No data was blocked in this demo, but in production you'd mask or reject it here."*
 
-**Three takeaways to leave on screen:**
-1. **Same agent, richer signal** — APM + gen_ai.* attributes = token economics for free
-2. **One platform** — traces, logs, errors, metrics, dashboards, alerts all from one cluster
-3. **Open standard** — OTel gen_ai.* means no vendor lock-in on the instrumentation side
+**In APM → click the trace for this message → `invoke_agent` span → Events tab**
+
+> *"The `guardrail.pii_detected` span event shows the PII type detected. This is your audit trail."*
+
+---
+
+## 🎬 Act 5 — Dashboard & Metrics (3 min)
+
+**Screen:** Kibana → Dashboards → "🤖 LLM Observability — gemini-demo-agent"
+
+> *"This dashboard is built from the OTel metrics the agent ships every 30 seconds. Four KPI tiles: agent turns, total tokens, average latency, tool calls. Two time-series panels below: turns over time and token burn rate."*
+
+> *"All of this data is in `metrics-generic.otel-default` — Elasticsearch. You can write any ES|QL query against it, join it to your business data, alert on it."*
+
+**Show the token time series:**
+
+> *"This is your token budget control panel. You can see exactly when usage spikes, which model is burning tokens (the `ab.variant` dimension is in the data), and forecast cost."*
+
+---
+
+## 🎬 Act 6 — SLOs & Alerts (3 min)
+
+**Screen:** Kibana → SLOs
+
+> *"Two SLOs, created from the trace data: Response Latency (95% of turns under 6 seconds, 30-day rolling) and Availability (99% of turns succeed, 30-day rolling). The burn rate shows how fast we're spending our error budget."*
+
+**Screen:** Kibana → Alerts → Rules
+
+> *"Three alert rules: High Latency (fires if any turn exceeds 5 seconds), Error Spike (fires if 3+ errors in 5 minutes), and Token Budget (fires if token usage exceeds 50k per hour)."*
+
+> *"In Elastic 9.5, when one of these alerts fires, two things happen automatically: the AI Assistant opens a triage investigation — it reads the alert, queries the relevant spans and logs, and proposes a root cause. And the service map is embedded right on the alert detail page so you can see which downstream dependency is contributing to the problem."*
+
+**Key message:** From alert → AI-assisted triage → service map → trace waterfall — all in one platform, no tool switching.
+
+---
+
+## 🎬 Act 7 — A/B Model Comparison with ES|QL (2 min)
+
+**Screen:** Kibana → Discover → Switch to ES|QL mode
+
+```esql
+FROM traces-generic.otel-default
+| WHERE attributes.gen_ai.operation.name == "invoke_agent"
+| STATS
+    avg_latency_ms = AVG(duration) / 1000000,
+    total_tokens   = SUM(attributes.gen_ai.usage.input_tokens),
+    turns          = COUNT(*)
+    BY attributes.ab.variant
+| SORT attributes.ab.variant ASC
+```
+
+> *"This query compares model A vs model B: average latency, total tokens consumed, and number of turns — split by the `ab.variant` attribute we tag on every span. This is how you decide whether the lighter model is good enough to route 100% of traffic to."*
+
+> *"Your data. Your query. No pre-built report to wait for."*
+
+---
+
+## 🎬 Act 8 — The Pitch (2 min)
+
+> *"Let me summarise what you just saw:*
+
+> *Three levels of spans per agent turn — root, tools, LLM call. Every turn traced at 100% sampling — nothing dropped. The full prompt and response stored on the span, not in a sidecar. PII guardrails emitting audit events. User feedback correlated back to the exact trace. A/B model routing visible in a single ES|QL query. SLOs, alert rules, and an AI assistant that triages incidents for you — all native in Elastic 9.5.*
+
+> *This is built on OpenTelemetry gen_ai.* semantic conventions — the open standard. If your team already uses OTel for microservices, this is additive instrumentation. One Python file, one OTLP endpoint, zero new infrastructure."*
+
+**Leave on screen:**
+1. **Own your data** — traces, logs, metrics in Elasticsearch, query anything
+2. **Open standard** — OTel gen_ai.* means no vendor lock-in
+3. **One platform** — APM, SLOs, alerts, dashboards, AI triage, all in Kibana
 
 ---
 
@@ -143,12 +167,14 @@ Before the call, confirm:
 
 | Question | Answer |
 |---|---|
-| *"Can I see actual conversation messages?"* | Yes — stored in span labels `gen_ai_input_messages` / `gen_ai_output_messages`. Click any LLM span → Labels. For a full conversation view, filter Discover by `labels.gen_ai_conversation_id`. |
-| *"How much does ingestion cost?"* | APM spans are very small — a typical agent trace is ~30 KB with all attributes. 500 requests/day = ~15 MB/day. Serverless pricing scales with actual data. |
-| *"Do you support streaming responses?"* | OTel gen_ai.* supports streaming via span events. We can show that as a follow-up with actual instrumented code. |
-| *"What about self-hosted models (Ollama, vLLM)?"* | Same OTel instrumentation works. The `gen_ai.provider.name` attribute just says "ollama" or "vllm". |
-| *"How do we correlate AI errors to user complaints?"* | Add `gen_ai.conversation_id` to your spans — it links every API call in a user session. Search by conversation ID in Discover. |
-| *"How is this different from Datadog LLM Obs?"* | Ownership: your data stays in your cluster. Flexibility: ES|QL lets you build any analysis, not just what Datadog pre-built. Integration: traces, logs, metrics, and AI data in one system instead of three. Cost: no per-token ingestion surcharge from a third party. |
+| *"Can I see the actual conversation?"* | Yes — `gen_ai.content.prompt` and `gen_ai.content.completion` span events, full text, no truncation. Click any `chat` span → Events tab. |
+| *"How does tool calling work?"* | Gemini function calling API — the agent decides which tools to call, each gets a child CLIENT span with `gen_ai.tool.name` and `peer.service`. The service map auto-discovers them. |
+| *"How do I compare models?"* | Tag spans with `ab.variant` and query ES|QL. We showed this live — AVG latency and token usage split by variant in one query. |
+| *"What about PII / data privacy?"* | PII detection before the LLM call, span events for audit trail, metric counter for dashboards. You can mask, block, or just flag — the guardrail is a hook in the span. |
+| *"How much does ingestion cost?"* | A typical agent turn with tool calls is ~40 KB of trace data. 1000 turns/day = ~40 MB/day. Serverless pricing scales with actual usage. |
+| *"Self-hosted models (Ollama, vLLM)?"* | Same OTel SDK, same gen_ai.* attributes — just set `gen_ai.system` to "ollama". The instrumentation is model-agnostic. |
+| *"How is this different from Datadog LLM Obs?"* | You own the data in Elasticsearch. Arbitrary ES|QL queries, not pre-built reports. Traces + logs + metrics + SLOs + alerts in one system. No per-token ingestion tax from a third party. |
+| *"What's Agent Observability & Monitoring in 9.5?"* | Tech preview — native Kibana UI for agentic traces. Exactly what we're emitting: tool call spans, LLM spans, reasoning steps. Our demo is the manual version of what that will productize. |
 
 ---
 
@@ -156,30 +182,41 @@ Before the call, confirm:
 
 | Metric | Value |
 |---|---|
-| Agent services monitored | 4 (LangGraph, CrewAI, AutoGen, LangChain) |
-| Model providers | 2 (OpenAI, Anthropic) |
-| Models tracked | gpt-4o, gpt-4o-mini, claude-3-5-sonnet, claude-3-5-haiku |
-| External dependencies | 6 (OpenAI, Anthropic, Elasticsearch, Code Executor, Web, Tools) |
-| OTel gen_ai.* attributes captured | 30+ per span |
-| APM tabs fully populated | 5/5 (Overview, Transactions, Dependencies, Errors, Logs) |
-| Time to add LLM obs to existing OTel app | ~1 hour of instrumentation |
+| Sampling rate | 100% — every turn visible |
+| OTel signals | 3 (traces, logs, metrics via OTLP) |
+| Span levels per turn | 3 (agent → tools → LLM) |
+| Tools available | 3 (search_knowledge_base, calculate, get_stock_price) |
+| Models in A/B test | 2 (gemini-2.5-flash 70% · gemini-2.5-flash-lite 30%) |
+| Metrics instruments | 10 (gen_ai.* + guardrails + feedback + host) |
+| Alert rules | 3 (latency, errors, token budget) |
+| SLOs | 2 (latency 95%, availability 99%) |
+| Extra infrastructure | 0 (one Python file, one OTLP endpoint) |
+| Time to add to existing OTel app | ~1 hour |
 
 ---
 
 ## 🔑 Navigation Reference
 
-| What to show | Where to go |
+| What to show | Where |
 |---|---|
-| Service list | APM → Services |
-| Trace waterfall | APM → Service → Transaction → click any row |
-| Conversation messages | Click any `chat` span → Labels tab |
-| Dependencies per service | APM → Service → Dependencies |
-| Full topology | APM → Service Map |
-| Error grouping | APM → Service → Errors |
-| Correlated logs | APM → Service → Logs |
-| Token cost dashboard | Dashboards → "LLM Observability — ai-research-agent" |
-| Custom ES|QL query | Dev Tools: `FROM traces-apm-default | WHERE service.name == "ai-research-agent" ...` |
+| Live chat agent | http://localhost:5601 |
+| APM service overview | APM → Services → gemini-demo-agent |
+| Trace waterfall | APM → Transactions → invoke_agent → any row |
+| Tool call spans | Trace waterfall → expand child spans |
+| Full prompt/response | Click `chat` span → Events tab |
+| Service map | APM → Service Map |
+| LLM dashboard | Dashboards → "🤖 LLM Observability — gemini-demo-agent" |
+| SLOs | Kibana → SLOs |
+| Alert rules | Kibana → Alerts → Rules → filter "LLM" |
+| A/B ES\|QL query | Discover → ES\|QL mode → query above |
+| All conversations | Discover → traces-generic.otel-default |
 
 ---
 
-*Script created 2026-08-20 — Kibana serverless*
+## 🚀 Suggested Opening Line
+
+> *"Before I share my screen — in the next 20 minutes you're going to watch a live AI agent call real tools, get traced end-to-end in Elastic APM, have its PII flagged by a guardrail, and be compared to a second model in a single ES|QL query. Everything you see is real data, generated right now, by the agent we're about to use."*
+
+---
+
+*Updated 2026-08-24 — Kibana 9.6 Serverless · v2.0*
