@@ -2,6 +2,15 @@
 
 A live Gemini chat demo with a compact scenario picker, conversation, and execution timeline. Open **http://localhost:5601** after starting it.
 
+## Before you start
+
+You must supply your own credentials and deployment:
+
+- **Gemini API key:** set `GEMINI_API_KEY` in your private `web_agent/.env` file. The demo calls Gemini directly for model responses.
+- **Elastic deployment and API key:** set `ES_ENDPOINT`, `ES_API_KEY`, `KIBANA_ENDPOINT`, and `OTEL_EXPORTER_OTLP_ENDPOINT` in that file. The deployment must support the Elasticsearch `redact` processor and the setup permissions described below. Elastic settings can also be updated through **Connection** in the UI after startup.
+
+No API keys or real deployment endpoints are bundled with this repository. Copy `web_agent/.env.example` to `web_agent/.env` and replace its placeholders with your own values. The private `.env` file is ignored by Git; never commit it. The UI's **Connection** panel configures Elastic only, so enter the Gemini key in the private environment file.
+
 ## Run
 
 ```bash
