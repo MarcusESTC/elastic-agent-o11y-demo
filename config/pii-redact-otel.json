@@ -1,0 +1,79 @@
+{
+  "description": "Agent Studio: mask conversation, tool, error and log content inside Elasticsearch during OTel ingestion. IDs and numeric measurements remain unchanged.",
+  "version": 3,
+  "processors": [
+    {
+      "script": {
+        "source": "void collect(def node, List path, List out) {\n  if (path.size() > 32) { throw new IllegalArgumentException('Telemetry content exceeds the redaction depth limit'); }\n  if (node instanceof String) { out.add(['path': path, 'value': node, 'original': node]); }\n  else if (node instanceof Map) {\n    for (def entry : node.entrySet()) { def next = new ArrayList(path); next.add(entry.getKey()); collect(entry.getValue(), next, out); }\n  } else if (node instanceof List) {\n    for (int i=0; i<node.size(); i++) { def next = new ArrayList(path); next.add(i); collect(node[i], next, out); }\n  }\n}\nctx._demo_redaction = [];\nfor (def field : ['body', 'message']) {\n  if (ctx.containsKey(field)) { collect(ctx[field], [field], ctx._demo_redaction); }\n}\nif (ctx.status instanceof Map && ctx.status.message != null) { collect(ctx.status.message, ['status', 'message'], ctx._demo_redaction); }\nif (ctx.attributes instanceof Map) {\n  for (def field : params.content_fields) {\n    if (ctx.attributes.containsKey(field)) { collect(ctx.attributes[field], ['attributes', field], ctx._demo_redaction); }\n  }\n}",
+        "params": {
+          "content_fields": [
+            "gen_ai.input.messages",
+            "gen_ai.output.messages",
+            "gen_ai.system_instructions",
+            "gen_ai.prompt",
+            "gen_ai.completion",
+            "tool.arguments",
+            "tool.result",
+            "exception.message",
+            "exception.stacktrace",
+            "message.preview",
+            "answer.preview",
+            "demo.original_prompt",
+            "error.grouping_name",
+            "error.exception.message",
+            "error.exception.stacktrace",
+            "error.log.message"
+          ]
+        }
+      }
+    },
+    {
+      "foreach": {
+        "field": "_demo_redaction",
+        "processor": {
+          "redact": {
+            "field": "_ingest._value.value",
+            "patterns": [
+              "%{DEMO_CARD:CREDIT_CARD}",
+              "%{EMAILADDRESS:EMAIL}",
+              "%{DEMO_SSN:SSN}",
+              "%{DEMO_PHONE:PHONE}",
+              "%{DEMO_CVV:CARD_SECURITY_CODE}"
+            ],
+            "pattern_definitions": {
+              "DEMO_CARD": "(?<![\\w])(?:[0-9][ -]?){12,18}[0-9](?![\\w])",
+              "DEMO_SSN": "(?<![0-9])[0-9]{3}-[0-9]{2}-[0-9]{4}(?![0-9])",
+              "DEMO_PHONE": "(?<![\\w])(?:\\+1[ .-]?)?\\(?[0-9]{3}\\)?[ .-][0-9]{3}[ .-][0-9]{4}(?![\\w])",
+              "DEMO_CVV": "(?i)\\b(?:cvv|cvc|security\\s+code)\\s*[:=]?\\s*[0-9]{3,4}\\b"
+            },
+            "prefix": "[",
+            "suffix": "]",
+            "skip_if_unlicensed": false,
+            "ignore_missing": false,
+            "on_failure": [
+              {
+                "set": {
+                  "field": "_demo_redaction_failed",
+                  "value": true
+                }
+              }
+            ]
+          }
+        },
+        "on_failure": [
+          {
+            "set": {
+              "field": "_demo_redaction_failed",
+              "value": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "script": {
+        "source": "if (ctx.remove('_demo_redaction_failed') == true) { throw new IllegalArgumentException('Required telemetry redaction failed'); }\nint count = 0;\nfor (def item : ctx._demo_redaction) {\n  def parent = ctx;\n  for (int i=0; i<item.path.size()-1; i++) { parent = parent[item.path[i]]; }\n  parent[item.path[item.path.size()-1]] = item.value;\n  if (item.value != item.original) { count++; }\n}\nctx.remove('_demo_redaction');\nif (!(ctx.attributes instanceof Map)) { ctx.attributes = [:]; }\nctx.attributes['privacy.processor'] = 'elasticsearch-redact';\nctx.attributes['privacy.mode'] = 'elasticsearch_ingest';\nctx.attributes['privacy.pipeline'] = 'agentic-demo-otel-redact';\nctx.attributes['privacy.action'] = count > 0 ? 'obfuscated' : 'no_match';\nctx.attributes['privacy.redacted_fields'] = count;"
+      }
+    }
+  ]
+}

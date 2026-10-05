@@ -1,0 +1,22 @@
+{
+  "description": "Agent Studio: obfuscate demo chat-log text before indexing. PII matches do not fail the application transaction.",
+  "processors": [
+    {
+      "redact": {
+        "field": "message",
+        "patterns": ["%{DEMO_CARD:CREDIT_CARD}", "%{EMAILADDRESS:EMAIL}", "%{DEMO_SSN:SSN}", "%{DEMO_PHONE:PHONE}", "%{DEMO_CVV:CARD_SECURITY_CODE}"],
+        "pattern_definitions": {
+          "DEMO_CARD": "(?<![\\w])(?:[0-9][ -]?){12,18}[0-9](?![\\w])",
+          "DEMO_SSN": "(?<![0-9])[0-9]{3}-[0-9]{2}-[0-9]{4}(?![0-9])",
+          "DEMO_PHONE": "(?<![\\w])(?:\\+1[ .-]?)?\\(?[0-9]{3}\\)?[ .-][0-9]{3}[ .-][0-9]{4}(?![\\w])",
+          "DEMO_CVV": "(?i)\\b(?:cvv|cvc|security\\s+code)\\s*[:=]?\\s*[0-9]{3,4}\\b"
+        },
+        "prefix": "[",
+        "suffix": "]",
+        "skip_if_unlicensed": false,
+        "ignore_missing": false
+      }
+    },
+    {"script": {"source": "ctx.privacy = ['processor': 'elasticsearch-redact', 'action': (ctx.message.contains('[CREDIT_CARD]') || ctx.message.contains('[EMAIL]') || ctx.message.contains('[SSN]') || ctx.message.contains('[PHONE]') || ctx.message.contains('[CARD_SECURITY_CODE]')) ? 'obfuscated' : 'no_match'];"}}
+  ]
+}

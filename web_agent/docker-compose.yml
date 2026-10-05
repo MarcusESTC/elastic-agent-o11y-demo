@@ -26,8 +26,12 @@ services:
       GEMINI_API_KEY:  "${GEMINI_API_KEY}"
       ES_ENDPOINT:     "${ES_ENDPOINT}"
       ES_API_KEY:      "${ES_API_KEY}"
+      ES_READ_API_KEY: "${ES_READ_API_KEY:-}"
+      ES_KNOWLEDGE_INDEX: "${ES_KNOWLEDGE_INDEX:-}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT}"
+      KIBANA_ENDPOINT: "${KIBANA_ENDPOINT}"
       GEMINI_MODEL:    "${GEMINI_MODEL:-gemini-2.5-flash}"
-      TRANSPORT:       "${TRANSPORT:-bulk}"
+      GEMINI_MODEL_B:  "${GEMINI_MODEL_B:-gemini-2.5-flash-lite}"
       PORT:            "5601"
     labels:
       # These labels help the OTel Collector identify this container
@@ -65,7 +69,7 @@ services:
       # Use the alternative logging approach below if this mount is empty.
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
     environment:
-      OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_INGEST_ENDPOINT}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT}"
       ES_API_KEY:                  "${ES_API_KEY}"
     depends_on:
       gemini-agent:

@@ -1,0 +1,20 @@
+[
+  {
+    "id": "elastic-redact",
+    "title": "Elastic: redact sensitive text before indexing",
+    "content": "For documents processed by Elasticsearch ingest pipelines, the redact processor replaces matching text in a configured string field. It supports ECS Grok patterns and custom regular expressions, including email and card-number patterns. Apply it to each relevant field; remove fields that should never be stored. The processor requires an appropriate commercial license. Keep skip_if_unlicensed false so missing licensing does not silently bypass redaction. Pattern matching is not comprehensive PII detection. The simulate API can also run a named pipeline and return the processed document without indexing it.",
+    "url": "https://www.elastic.co/docs/reference/ingest-processor/redact-processor"
+  },
+  {
+    "id": "otel-native-privacy",
+    "title": "Elastic: custom ingest pipelines for OTel-native telemetry",
+    "content": "Elastic supports user-defined ingest pipelines on OTel data streams. Native field names may contain dots; use flexible field access or explicit map keys. Agent Studio routes traces and logs through managed OTLP into dedicated agentic_demo streams with the mandatory agentic-demo-otel-redact final pipeline. Elastic masks the stored conversation, tool and error content during ingestion. The application does not call a redaction API; Gemini and the local conversation UI receive original text. The View Elastic copy button reads the already-indexed root span to show the masked result. This route was verified on the demo deployment; validate the actual ingestion path, payload shapes and stored source for any other deployment. Existing records are not rewritten.",
+    "url": "https://www.elastic.co/docs/reference/opentelemetry/compatibility/limitations"
+  },
+  {
+    "id": "managed-bulk",
+    "title": "Elastic: distinguish managed bulk ingestion from OTLP",
+    "content": "The managed Elasticsearch bulk endpoint is a logs-only ingestion input ending in /_es. It is separate from the managed OTLP endpoint used for OpenTelemetry traces, logs and metrics. The bulk endpoint is not the ordinary Elasticsearch search API. This demo sends OTel signals using the OTLP base and performs document retrieval through the deployment's direct Elasticsearch API with a separate search credential.",
+    "url": "https://www.elastic.co/docs/reference/opentelemetry/managed-inputs/elasticsearch-bulk"
+  }
+]

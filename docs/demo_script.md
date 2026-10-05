@@ -1,4 +1,7 @@
 # AI Agent Observability — Demo Script
+
+> **Historical guide.** This describes the previous UI and pre-model guardrail behavior. For the current scenarios, diagrams, and Elasticsearch ingestion redaction, use [Agent Studio: 8-minute walkthrough](AGENT-STUDIO-DEMO.md).
+
 ### Talk Track & Presenter Guide
 
 > **Audience:** Engineering leaders, AI/Platform teams evaluating LLM observability  

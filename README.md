@@ -1,174 +1,79 @@
-# AI Agent Observability — Elastic + OpenTelemetry
+# Agent Studio - Elastic + OpenTelemetry
 
-A live Gemini AI chat agent fully instrumented with the OpenTelemetry SDK.  
-Every interaction ships **traces, logs, and metrics** via OTLP/HTTP to Elastic — exactly as a production service would.
+A live Gemini chat demo with a compact scenario picker, conversation, and execution timeline. Open **http://localhost:5601** after starting it.
 
-![OTel](https://img.shields.io/badge/OpenTelemetry-OTLP%2FHTTP-7b61ff?logo=opentelemetry)
-![Elastic](https://img.shields.io/badge/Elastic-APM-00bfb3?logo=elastic)
-![Gemini](https://img.shields.io/badge/Google-Gemini%202.5%20Flash-blue?logo=google)
-![Sampling](https://img.shields.io/badge/Sampling-100%25-green)
-
----
-
-## What this demos
-
-| Signal | Where it lands | What you see |
-|--------|----------------|--------------|
-| 📡 **Traces** | `traces-generic.otel-default` | Full waterfall: `invoke_agent [SERVER]` → `chat gemini-2.5-flash [CLIENT]` |
-| 📋 **Logs** | `logs-generic.otel-default` | Structured logs with `trace_id` auto-correlated to every span |
-| 📊 **Metrics** | `metrics-generic.otel-default` | `gen_ai.client.token.usage`, `gen_ai.client.operation.duration`, real CPU/memory via psutil |
-
-**Service Map:** Kibana auto-discovers the `gemini-demo-agent → google_gemini` dependency from `peer.service` on the CLIENT span.
-
-**Full request/response:** Stored as OTel span events (`gen_ai.content.prompt` / `gen_ai.content.completion`) — no truncation, fully searchable via ES|QL.
-
----
-
-## Architecture
-
-```
-🌐 Browser (Chat UI)
-      │ HTTP POST /api/chat
-      ▼
-⚡ Python Server  ──── Gemini API call ───▶  🤖 Google Gemini
- (OTel SDK · psutil)                         (gemini-2.5-flash)
-      │
-      │ OTLP/HTTP
-      ▼
-☁️  Elastic Cloud
-  ├── /v1/traces   → APM · Service Map · Waterfall
-  ├── /v1/metrics  → Token usage · Latency · Host metrics
-  └── /v1/logs     → Correlated logs · Discover · Alerts
-```
-
----
-
-## Quick start
-
-### 1. Prerequisites
+## Run
 
 ```bash
 pip install google-genai opentelemetry-sdk opentelemetry-exporter-otlp-proto-http psutil
+cp web_agent/.env.example web_agent/.env
+# Fill in the private credentials and endpoint URLs.
+python3 scripts/setup-ingestion.py
+bash start.sh
 ```
 
-### 2. Configure
+For an isolated test instance: `bash start.sh --port 5602`.
+Docker is optional: `cd web_agent && docker compose up --build`. The Docker Collector sidecar configuration is separate from the directly instrumented app.
+
+## What the demo shows
+
+- Separate spans for each model invocation and tool attempt, plus exact trace and correlated-log links.
+- Six scenarios: success, injected delay, injected timeout/recovery, PII obfuscation, real document search, and model comparison.
+- Real Elasticsearch retrieval from a configured knowledge index, with links to source documentation. Without a search key/index it explicitly uses bundled reference documents.
+- Estimated standard Gemini API cost per model, including provider-reported thinking tokens; feedback counted once per response.
+- Actual exporter acknowledgements for traces, logs and metrics; real host CPU, memory and network measurements.
+- Successful requests with synthetic PII: Elasticsearch masks stored conversation, tool and error telemetry during ingestion. Gemini and the chat UI receive the original content.
+
+This is a custom demo built with the upstream OTel Python SDK, not Elastic Agent Builder or an EDOT SDK. Fault injection and public reference data are labeled.
+
+## Connections
+
+Open **Connection** in the UI header to configure the Elasticsearch endpoint and encoded API key. Kibana and managed OTLP URLs are filled in for the standard Elastic Cloud URL format; edit them under **Advanced endpoints** when needed. **Test connection** checks authentication, the ingest pipeline, protected templates/backing indices, knowledge access and all three OTLP routes without saving. **Save & reconnect** repeats those checks, saves the settings and restarts the server when they change. Existing runs must finish first; the next run starts a new conversation.
+
+Leave the key blank to preserve existing credentials. Changing the Elasticsearch or OTLP destination requires entering a key. Saved keys are never sent back to the browser or kept in browser storage. The settings API is restricted to localhost with same-origin and CSRF checks. Local settings are saved atomically in the ignored `web_agent/.env` with mode `0600`, preserving the Gemini key and other settings. For Docker, persist the file in a private volume and keep container environment overrides consistent with it.
+
+The destination must have the demo ingest pipeline and dedicated trace/log templates. Run `python3 scripts/setup-ingestion.py` once with administrative pipeline/template/index permissions. Runtime configuration checks need `read_pipeline`, permission to read index templates (`manage_index_templates`), and `view_index_metadata` on the demo streams; the saved-copy view needs `read` on the demo traces. Knowledge retrieval needs `read` on its index. Managed OTLP export requires `event:write` for the `apm` application. The UI remains available if configuration checks fail, but new runs are blocked until the destination is configured.
+
+`GEMINI_API_KEY` authenticates model calls. `ES_API_KEY` authenticates managed ingestion. All OTel signals use `OTEL_EXPORTER_OTLP_ENDPOINT` with `/v1/traces`, `/v1/metrics`, and `/v1/logs`. `KIBANA_ENDPOINT` controls the UI links.
+
+`ES_ENDPOINT` is the direct Elasticsearch API URL. `ES_READ_API_KEY` (falling back to `ES_API_KEY` for configuration/proof) reads configuration and stored traces; it also performs knowledge searches when `ES_KNOWLEDGE_INDEX` is configured. No keys are exposed by the frontend. The previous `ES_REDACT_PIPELINE`, `ES_REDACT_API_KEY` and `ES_PII_INDEX` settings are no longer used.
+
+The managed bulk URL ending in `/_es` is a separate logs-only input, not the Elasticsearch query API or an OTLP prefix. [Elastic managed bulk documentation](https://www.elastic.co/docs/reference/opentelemetry/managed-inputs/elasticsearch-bulk).
+
+## Telemetry and privacy
+
+Native signals are routed using `data_stream.dataset=agentic_demo` and namespace `default`. Traces land in `traces-agentic_demo.otel-default`, logs and span events in `logs-agentic_demo.otel-default`, and metrics in `metrics-agentic_demo.otel-default`. These streams are dedicated to this app; existing generic streams and other services are unchanged.
+
+`agentic-demo-otel-redact`, defined in `config/pii-redact-otel.json`, is the mandatory `index.final_pipeline` on the demo trace/log streams. Their index templates retain Elastic's native OTel components and apply the final pipeline to future backing indices. The pipeline processes conversation JSON, tool arguments/results, log bodies/previews, span status messages, and exception content, then records `attributes.privacy.*` as proof. Numeric measurements and correlation IDs are preserved. It uses Elastic's `redact` processor with `skip_if_unlicensed: false`; a processor failure prevents normal indexing. Pattern matching is not complete PII detection or card validation.
+
+The app sends ordinary OTLP without calling a redaction API. It makes no `_simulate` requests and no separate chat-log writes. **Gemini, local history and the conversation UI receive original content.** This is ingestion privacy, not a model-input guardrail. Read-only startup/settings checks inspect pipeline bindings, not user text. Runtime telemetry failures remain separate from application success; an OTLP acknowledgment alone does not prove successful indexing.
+
+Root and model spans include `gen_ai.input.messages`, `gen_ai.output.messages`, and `gen_ai.system_instructions` for Kibana's **GenAI → Conversation** panel. Tool exchanges and history are retained. Stored fields are masked by the final pipeline; pre-existing records are not rewritten.
+
+After a run, expand **Elastic copy · redacted during ingestion**, then choose **View Elastic copy**. This performs a read-only search of the already-indexed root span. It shows the stored question and answer only when pipeline metadata is present, or explicitly reports pending/unverified data. It never sends the prompt through a redaction API.
+
+**How it works** opens two updated network diagrams: **Conversation** shows browser ↔ app ↔ Gemini with original text; **Telemetry & storage** shows app → managed OTLP → Elasticsearch final pipeline → masked native streams → Kibana. Numeric metrics also use managed OTLP. Close with × or Escape.
+
+## Guides and tests
+
+- [Demo walkthrough](docs/AGENT-STUDIO-DEMO.md)
+- [Copyable PII configuration](docs/PII-Redaction-Elastic.md)
+- [Historical endpoint change](docs/ENDPOINT-CHANGE-2026-09-24.md) — superseded deployment
 
 ```bash
-cd web_agent
-cp .env.example .env
-# Edit .env — add your GEMINI_API_KEY, ES_ENDPOINT, ES_API_KEY
+python3 -m unittest discover -s tests -v
+# Uses synthetic PII through real OTLP, then reads indexed _source:
+python3 scripts/verify-ingestion.py
 ```
 
-Get your Elastic credentials from [cloud.elastic.co](https://cloud.elastic.co):
-- **ES_ENDPOINT** — the Elasticsearch endpoint (`https://<id>.es.<region>.elastic.cloud`)
-- **ES_API_KEY** — an API key with `monitor` + indices write privileges
+Offline tests cover original model/UI content, absence of extra redaction requests, actual tool exchanges, retries, safe arithmetic, duplicate feedback, configuration checks and stored-copy access. The live ingestion test covers card/email/SSN/phone/CVV replacements in spans, logs, exceptions and tool content, unchanged non-PII text, and intact IDs. Cost estimates use [Google standard text API pricing](https://ai.google.dev/gemini-api/docs/pricing); free-tier allowances, caching and external tool charges are excluded.
 
-### 3. Run
+## Implementation
 
-```bash
-export $(cat web_agent/.env | xargs)
-python3 web_agent/server.py
-```
+`web_agent/server.py` starts `studio.py`. `telemetry.py` configures signals and health, `privacy.py` defines the ingestion contract, `connection.py` resolves endpoint URLs, `knowledge.json` holds reference summaries, and `static/` contains the interface. Local keys and `.runtime/` are ignored by Git.
 
-Open **http://localhost:5601** — the chat UI is live.
+Keep actual deployment endpoints and API keys in the ignored private environment file. Public documentation and examples must use placeholders; tests use fictional deployment names. Do not commit local connection files, screenshots of connection settings, or runtime verification output.
 
-### 4. Docker (optional)
+Historical material is retained for reference: `docs/demo_script.md` and `presentation/index.html` describe the earlier UI and pre-model guardrails; `config/pii-redact-ecs.json` and `scripts/build-pii-onepager.py` describe the superseded chat-log route. The optional `monitor/` helpers target the older generic streams. Use the walkthrough and ingestion configuration above for the current demo. Generated PDFs in `output/` are local artifacts and are not published.
 
-```bash
-cd web_agent
-docker compose up --build
-```
-
-Includes an OTel Collector sidecar that ships real Docker container metrics and logs.
-
----
-
-## OTel signals detail
-
-### Traces (100% sampling — AlwaysOn)
-
-Every chat turn produces one trace with two spans:
-
-```
-invoke_agent [SERVER, ~4s]          ← APM Transaction
-  └── chat gemini-2.5-flash [CLIENT, ~3.6s]  ← APM Span
-        ├── event: gen_ai.content.prompt      ← full user message
-        └── event: gen_ai.content.completion  ← full LLM response
-```
-
-Key span attributes follow the [OTel gen_ai semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/):
-
-| Attribute | Example |
-|-----------|---------|
-| `gen_ai.system` | `google_gemini` |
-| `gen_ai.request.model` | `gemini-2.5-flash` |
-| `gen_ai.usage.input_tokens` | `82` |
-| `gen_ai.usage.output_tokens` | `190` |
-| `peer.service` | `google_gemini` ← drives Service Map |
-
-### Metrics (every 30 s)
-
-| Metric | Type | Description |
-|--------|------|-------------|
-| `gen_ai.client.token.usage` | Counter | Tokens in/out per model |
-| `gen_ai.client.operation.duration` | Histogram | End-to-end latency in seconds |
-| `gen_ai.client.errors` | Counter | Errors by type |
-| `system.cpu.utilization` | Observable Gauge | Real host CPU via psutil |
-| `system.memory.usage` | Observable UpDownCounter | RSS bytes |
-| `system.network.io` | Observable Counter | Network bytes in/out |
-
-### Logs
-
-Two log records per turn, both carrying `trace_id` + `span_id` for correlation:
-
-- **Turn started** — `conversation_id`, `model`, `user_message_len`
-- **Turn completed** — `in_tokens`, `out_tokens`, `latency_ms`, `cost_usd`, `is_error`
-
----
-
-## Kibana navigation
-
-| View | Path |
-|------|------|
-| Transactions | APM → Services → `gemini-demo-agent` → Transactions |
-| Trace waterfall | Click any `invoke_agent` transaction |
-| Service Map | APM → Services → `gemini-demo-agent` → Service Map |
-| Logs | APM → Services → `gemini-demo-agent` → Logs |
-| ES\|QL query | Discover → `traces-generic.otel-default` |
-
----
-
-## ES|QL — query all conversations
-
-```esql
-FROM traces-generic.otel-default
-| WHERE attributes.gen_ai.operation.name == "invoke_agent"
-| KEEP @timestamp, attributes.gen_ai.conversation.id,
-       attributes.gen_ai.usage.input_tokens,
-       attributes.gen_ai.usage.output_tokens
-| SORT @timestamp DESC
-| LIMIT 50
-```
-
----
-
-## Files
-
-```
-web_agent/
-├── server.py          # Full OTel web server (the main file)
-├── Dockerfile         # Single-container build
-├── docker-compose.yml # Agent + OTel Collector sidecar
-├── otel-collector.yml # Collector config (Docker stats + filelog + OTLP)
-└── .env.example       # Template — copy to .env
-presentation/
-└── index.html         # 13-slide standalone HTML deck (no deps)
-docs/
-└── demo_script.md     # Step-by-step 10-min demo walkthrough
-```
-
----
-
-## License
-
-Apache 2.0 — see [LICENSE](LICENSE).
+Failure-store capture is explicitly disabled for these dedicated demo trace/log streams and their templates, so failed processing cannot retain the original document in a failure index. Redaction failures reject the telemetry document; they do not roll back a successful model response. Monitor ingestion failures separately.

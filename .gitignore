@@ -34,3 +34,9 @@ build/
 /data/
 /web/
 /slides/
+
+# Local runtime state and credentials
+.runtime/
+
+# Locally generated documents and previews
+/output/

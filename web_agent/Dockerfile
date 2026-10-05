@@ -10,7 +10,8 @@ RUN pip install --no-cache-dir \
     psutil
 
 # Copy the server
-COPY server.py .
+COPY server.py connection.py settings.py studio.py telemetry.py privacy.py knowledge.json ./
+COPY static ./static
 
 # Expose web UI port
 EXPOSE 5601

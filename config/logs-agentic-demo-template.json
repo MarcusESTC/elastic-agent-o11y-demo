@@ -1,0 +1,47 @@
+{
+  "index_patterns": [
+    "logs-agentic_demo.otel-*"
+  ],
+  "template": {
+    "mappings": {
+      "properties": {
+        "data_stream.type": {
+          "type": "constant_keyword",
+          "value": "logs"
+        }
+      }
+    },
+    "settings": {
+      "index.final_pipeline": "agentic-demo-otel-redact"
+    },
+    "data_stream_options": {
+      "failure_store": {
+        "enabled": false
+      }
+    }
+  },
+  "composed_of": [
+    "logs@mappings",
+    "logs@settings",
+    "otel@mappings",
+    "otel@settings",
+    "logs-otel@mappings",
+    "semconv-resource-to-ecs@mappings",
+    "logs@custom",
+    "logs-otel@custom",
+    "ecs@mappings"
+  ],
+  "priority": 250,
+  "_meta": {
+    "description": "Agent Studio only: mandatory Elasticsearch ingest redaction"
+  },
+  "data_stream": {
+    "hidden": false,
+    "allow_custom_routing": false
+  },
+  "allow_auto_create": true,
+  "ignore_missing_component_templates": [
+    "logs@custom",
+    "logs-otel@custom"
+  ]
+}

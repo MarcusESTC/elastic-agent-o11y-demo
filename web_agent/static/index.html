@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Agent Studio · Elastic Observability</title><link rel="stylesheet" href="/styles.css"></head>
+<body>
+<header class="topbar"><a class="brand" href="/">Agent Studio <span>Elastic Observability</span></a><div class="header-actions"><button id="show-settings" class="architecture-button" type="button" aria-haspopup="dialog" aria-controls="settings-dialog">Connection</button><button id="show-architecture" class="architecture-button" type="button" aria-haspopup="dialog" aria-controls="architecture-dialog">How it works</button><a id="service-link" class="quiet-link" target="_blank" rel="noopener">Open Elastic ↗</a></div></header>
+<div class="demo-controls">
+  <label>Scenario<select id="scenario-select" aria-label="Choose a demo scenario"></select></label>
+  <label>Model<select id="model" aria-label="Choose model"><option value="A">Gemini 2.5 Flash</option><option value="B">Gemini 2.5 Flash-Lite</option><option value="auto">Automatic A/B routing</option></select></label>
+  <button class="icon-button" id="reset">New chat</button>
+</div>
+<main class="workspace">
+<section class="conversation-panel" aria-label="Conversation">
+  <div class="panel-heading"><div><h1 id="scenario-title">Successful run</h1><p id="scenario-description">Follow a model call, a calculation and the answer.</p></div></div>
+  <div id="conversation" class="conversation"><div id="welcome" class="welcome"><h2>Ready when you are.</h2><p>Choose a scenario above, then run it to see the answer and its trace.</p></div></div>
+  <form id="composer" class="composer"><label class="sr-only" for="prompt">Your message</label><textarea id="prompt" rows="3" maxlength="8000" placeholder="Ask a question…"></textarea><div class="composer-footer"><span id="composer-hint">Enter to run · Shift + Enter for a new line</span><button id="send" class="primary" type="submit">Run scenario <span>↗</span></button></div></form>
+  <p class="disclosure">Original text goes to Gemini and this UI. Elastic masks stored telemetry during ingestion. Use synthetic demo data.</p>
+</section>
+<aside class="inspector" aria-label="Execution timeline">
+  <div class="panel-heading"><h2>Execution</h2><span id="run-state" class="status-badge">Ready</span></div>
+  <div id="run-tabs" class="run-tabs"></div>
+  <div id="timeline" class="timeline"><div class="empty-timeline">Model calls and tools will appear here.</div></div>
+  <div id="trace-actions" class="trace-actions"></div>
+  <details class="technical connection"><summary>Delivery & connection</summary><div class="export-panel"><div class="section-label">Telemetry <button id="refresh-health" class="text-button" aria-label="Refresh delivery status">↻</button></div><div id="signals" class="signals"></div><p>Exporter acknowledgements. Indexing may take a moment.</p></div><dl id="connection-details"></dl><p>Elastic applies configured patterns. This is not complete PII detection.</p></details>
+</aside>
+</main>
+<dialog id="settings-dialog" class="architecture-dialog settings-dialog" aria-labelledby="settings-title" aria-describedby="settings-description">
+  <div class="architecture-heading"><div><h2 id="settings-title">Elastic connection</h2><p id="settings-description">Choose where this demo sends its data.</p></div><button id="close-settings" class="architecture-close" type="button" aria-label="Close connection settings">✕</button></div>
+  <form id="settings-form" class="settings-form" autocomplete="off">
+    <fieldset id="settings-fields">
+      <label for="elastic-endpoint">Elasticsearch endpoint</label>
+      <input id="elastic-endpoint" name="elasticsearch_endpoint" type="url" placeholder="https://your-project.es.region.elastic.cloud" required spellcheck="false" autocomplete="off" aria-describedby="endpoint-help">
+      <p id="endpoint-help" class="field-help">Paste an Elasticsearch or Kibana base URL. Elastic Cloud companion URLs are filled in automatically.</p>
+      <label for="elastic-api-key">API key</label>
+      <input id="elastic-api-key" name="api_key" type="password" placeholder="Encoded Elastic API key" autocomplete="new-password" spellcheck="false" maxlength="4096" aria-describedby="key-help">
+      <p id="key-help" class="field-help">Stored privately on this server. The saved key is never displayed.</p>
+      <details class="settings-advanced"><summary>Advanced endpoints</summary>
+        <label for="elastic-kibana">Kibana endpoint</label><input id="elastic-kibana" name="kibana_endpoint" type="url" placeholder="https://your-project.kb.region.elastic.cloud" spellcheck="false" autocomplete="off">
+        <label for="elastic-otlp">Managed OTLP endpoint</label><input id="elastic-otlp" name="otlp_endpoint" type="url" placeholder="https://your-project.ingest.region.elastic.cloud" spellcheck="false" autocomplete="off">
+      </details>
+      <p class="settings-note">The destination needs this demo’s ingest pipeline and protected trace/log templates. Saving checks them and reconnects the server. Your next run starts a new conversation.</p>
+      <div class="settings-actions"><button id="test-connection" class="architecture-button" type="button">Test connection</button><button id="save-connection" class="primary" type="submit">Save & reconnect</button></div>
+    </fieldset>
+    <p id="settings-status" class="settings-status" role="status" aria-live="polite"></p>
+  </form>
+</dialog>
+<dialog id="architecture-dialog" class="architecture-dialog" aria-labelledby="architecture-title" aria-describedby="architecture-description">
+  <div class="architecture-heading"><div><h2 id="architecture-title">How the demo works</h2><p id="architecture-description">Follow the conversation, then see how its evidence reaches Elastic.</p></div><button id="close-architecture" class="architecture-close" type="button" aria-label="Close network diagram" autofocus>✕</button></div>
+  <div class="diagram-switch" role="group" aria-label="Choose a network diagram"><button type="button" data-diagram="conversation" aria-pressed="true" aria-controls="diagram-conversation">Conversation</button><button type="button" data-diagram="telemetry" aria-pressed="false" aria-controls="diagram-telemetry">Telemetry & storage</button></div>
+  <section id="diagram-conversation" class="diagram-view" aria-label="Conversation flow">
+    <div class="diagram-canvas" tabindex="0" role="region" aria-label="Conversation network diagram; scroll horizontally on small screens">
+      <svg viewBox="0 0 1040 380" role="img" aria-labelledby="conversation-svg-title conversation-svg-description">
+        <title id="conversation-svg-title">Original conversation goes directly to Gemini</title>
+        <desc id="conversation-svg-description">The browser sends the original prompt to Agent Studio, which calls Gemini directly and returns its answer. The app emits OpenTelemetry separately. There is no redaction request before the model call. Elasticsearch masks the telemetry during indexing, as shown in the Telemetry and storage tab.</desc>
+        <defs><marker id="conversation-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="context-stroke"/></marker></defs>
+        <rect class="diagram-zone" x="16" y="40" width="622" height="310" rx="14"/>
+        <text class="diagram-zone-label" x="36" y="70">YOUR COMPUTER</text><text class="diagram-zone-label" x="770" y="70">GOOGLE</text>
+        <path class="diagram-wire" d="M220 165 H365" marker-start="url(#conversation-arrow)" marker-end="url(#conversation-arrow)"/>
+        <text class="diagram-edge-label" x="292" y="140" text-anchor="middle">Original conversation</text>
+        <path class="diagram-wire original-wire" d="M610 165 H770" marker-start="url(#conversation-arrow)" marker-end="url(#conversation-arrow)"/>
+        <text class="diagram-edge-label" x="690" y="140" text-anchor="middle">Prompt + answer</text>
+        <rect class="diagram-node" x="40" y="120" width="180" height="95" rx="10"/>
+        <text class="diagram-node-title" x="60" y="158">Browser</text><text class="diagram-node-copy" x="60" y="187">Original question + answer</text>
+        <rect class="diagram-node" x="365" y="120" width="245" height="95" rx="10"/>
+        <text class="diagram-node-title" x="385" y="158">Agent Studio</text><text class="diagram-node-copy" x="385" y="187">Orchestrates models + tools</text>
+        <rect class="diagram-node" x="770" y="120" width="240" height="95" rx="10"/>
+        <text class="diagram-node-title" x="790" y="158">Gemini</text><text class="diagram-node-copy" x="790" y="187">Receives the original prompt</text>
+        <path class="diagram-wire" d="M485 215 V275" marker-end="url(#conversation-arrow)"/>
+        <text class="diagram-node-title" x="485" y="305" text-anchor="middle">OpenTelemetry</text>
+        <text class="diagram-node-copy" x="485" y="329" text-anchor="middle">Follow “Telemetry &amp; storage” to see redaction</text>
+      </svg>
+    </div>
+    <div class="diagram-explanation"><strong>The model receives the original prompt.</strong><p>The app calls Gemini directly. Its question, answer and tool activity are recorded as telemetry. Masking happens later, inside Elasticsearch during ingestion.</p></div>
+  </section>
+  <section id="diagram-telemetry" class="diagram-view" aria-label="Telemetry and storage flow" hidden>
+    <div class="diagram-canvas" tabindex="0" role="region" aria-label="Telemetry network diagram; scroll horizontally on small screens">
+      <svg viewBox="0 0 1120 410" role="img" aria-labelledby="telemetry-svg-title telemetry-svg-description">
+        <title id="telemetry-svg-title">Elasticsearch redacts telemetry during ingestion</title>
+        <desc id="telemetry-svg-description">Agent Studio sends original traces and logs through the managed OTLP endpoint. Dedicated agentic_demo data streams apply the mandatory agentic-demo-otel-redact final pipeline before indexing. Kibana reads the masked documents. Numeric metrics also use OTLP. No simulate request or separate chat-log write is made.</desc>
+        <defs><marker id="telemetry-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="context-stroke"/></marker></defs>
+        <rect class="diagram-zone" x="265" y="30" width="839" height="350" rx="14"/>
+        <text class="diagram-zone-label" x="25" y="60">YOUR COMPUTER</text><text class="diagram-zone-label" x="285" y="60">ELASTIC CLOUD</text>
+        <path class="diagram-wire original-wire" d="M205 155 H290" marker-end="url(#telemetry-arrow)"/>
+        <text class="diagram-edge-label original-label" x="247" y="132" text-anchor="middle">OTLP</text>
+        <path class="diagram-wire original-wire" d="M490 155 H555" marker-end="url(#telemetry-arrow)"/>
+        <path class="diagram-wire masked-wire" d="M790 155 H855" marker-end="url(#telemetry-arrow)"/>
+        <text class="diagram-edge-label masked-label" x="823" y="132" text-anchor="middle">Masked</text>
+        <rect class="diagram-node" x="25" y="105" width="180" height="110" rx="10"/>
+        <text class="diagram-node-title" x="45" y="145">Agent Studio</text><text class="diagram-node-copy" x="45" y="174">OpenTelemetry SDK</text><text class="diagram-node-copy" x="45" y="198">Original telemetry</text>
+        <rect class="diagram-node" x="290" y="105" width="200" height="110" rx="10"/>
+        <text class="diagram-node-title" x="310" y="145">Managed OTLP</text><text class="diagram-node-copy" x="310" y="174">Accepts traces + logs</text><text class="diagram-node-copy" x="310" y="198">Routes to demo streams</text>
+        <rect class="diagram-node elastic-node" x="555" y="105" width="235" height="110" rx="10"/>
+        <text class="diagram-node-title" x="575" y="145">Elasticsearch pipeline</text><text class="diagram-node-copy" x="575" y="174">Mandatory final pipeline</text><text class="diagram-node-copy" x="575" y="198">Masks content before indexing</text>
+        <rect class="diagram-node" x="855" y="105" width="225" height="110" rx="10"/>
+        <text class="diagram-node-title" x="875" y="145">Stored telemetry</text><text class="diagram-node-copy" x="875" y="174">Masked question + answer</text><text class="diagram-node-copy" x="875" y="198">Trace IDs stay intact</text>
+        <path class="diagram-wire" d="M968 215 V278" marker-end="url(#telemetry-arrow)"/>
+        <rect class="diagram-node" x="855" y="278" width="225" height="64" rx="10"/>
+        <text class="diagram-node-title" x="968" y="318" text-anchor="middle">Kibana</text>
+        <text class="diagram-node-copy" x="310" y="283">Pipeline: agentic-demo-otel-redact</text>
+        <text class="diagram-node-copy" x="310" y="311">Numeric metrics also travel through OTLP.</text>
+        <text class="diagram-node-copy" x="310" y="339">“View Elastic copy” reads the already-stored trace.</text>
+      </svg>
+    </div>
+    <div class="diagram-explanation"><strong>Redaction is part of ingestion.</strong><p>Dedicated trace and log streams require Elastic’s final redact pipeline. The app makes no separate redaction request and writes no extra chat-log copy. Use “View Elastic copy” after a run to inspect the stored result.</p></div>
+  </section>
+  <div class="diagram-footer"><span>Cloud connections use HTTPS. Diagram shows the demo architecture, not live network traffic.</span><span>Esc to close</span></div>
+</dialog>
+<div id="toast" role="status" aria-live="polite"></div><script src="/app.js"></script>
+</body></html>
